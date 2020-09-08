@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 )
 
 // 日志 输出至 ES , FILE
@@ -28,12 +29,14 @@ type logger interface {
 type loges struct {
 	logger
 	sync.Mutex
-	isEs     bool
-	file     *os.File
-	fileName string
-	size     int64
-	writers  []io.Writer
-	send     chan []byte
+	isEs       bool
+	file       *os.File
+	fileName   string
+	size       int64
+	writers    []io.Writer
+	send       chan []byte
+	urlErr     bool
+	urlErrTime chan int
 }
 
 func (l *loges) trace(v ...interface{}) {
@@ -52,10 +55,16 @@ func (l *loges) fatal(v ...interface{}) {
 
 }
 func (l *loges) request(byt []byte) {
-	_, err := http.Post("", "application/json", bytes.NewReader(byt))
-	if err != nil {
-		l.error(err)
-		return
+	if !l.urlErr {
+		c := http.Client{}
+		req, err := http.NewRequest("POST", "", bytes.NewReader(byt))
+		if err != nil {
+			l.urlErr = true
+			l.urlErrTime <- 1
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		c.Do(req)
 	}
 }
 func (l *loges) hub(filePath string) {
@@ -72,6 +81,13 @@ func (l *loges) hub(filePath string) {
 			for _, v := range l.writers {
 				v.Write(byt)
 			}
+		}
+	}()
+	go func() {
+		for {
+			_ = <-l.urlErrTime
+			<-time.After(time.Second * 30)
+			l.urlErr = false
 		}
 	}()
 }
