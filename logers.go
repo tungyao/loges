@@ -1,7 +1,10 @@
 package loges
 
 import (
+	"bytes"
 	"io"
+	"log"
+	"net/http"
 	"os"
 	"sync"
 )
@@ -30,6 +33,7 @@ type loges struct {
 	fileName string
 	size     int64
 	writers  []io.Writer
+	send     chan []byte
 }
 
 func (l *loges) trace(v ...interface{}) {
@@ -47,11 +51,36 @@ func (l *loges) error(v ...interface{}) {
 func (l *loges) fatal(v ...interface{}) {
 
 }
+func (l *loges) request(byt []byte) {
+	_, err := http.Post("", "application/json", bytes.NewReader(byt))
+	if err != nil {
+		l.error(err)
+		return
+	}
+}
+func (l *loges) hub(filePath string) {
+	// 建立缓冲通道
+	l.send = make(chan []byte, 2048)
+	fs, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 766)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	l.writers[0] = fs
+	go func() {
+		for {
+			byt := <-l.send
+			for _, v := range l.writers {
+				v.Write(byt)
+			}
+		}
+	}()
+}
 
 var defaultLoges *loges
 
 func init() {
 	defaultLoges = &loges{}
+	defaultLoges.hub("./info.log")
 }
 
 func Println(v ...interface{}) {
@@ -59,11 +88,11 @@ func Println(v ...interface{}) {
 }
 
 func Panic(v ...interface{}) {
-
+	defaultLoges.error(v)
 }
 func Warn(v ...interface{}) {
-
+	defaultLoges.warn(v)
 }
 func Fatal(v ...interface{}) {
-
+	defaultLoges.fatal(v)
 }
