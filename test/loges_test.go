@@ -1,17 +1,21 @@
 package test
 
 import (
-	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"testing"
+	"time"
 
-	log "../../loges2"
+	log "../../loges"
 )
 
 func TestLoges(t *testing.T) {
 	// log.Error()
-	log.Println(errors.New("123"))
+	http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		log.Println(request.RemoteAddr, request.Method, request.URL.Path)
+	})
+	http.ListenAndServe(":8000", nil)
 }
 func TestRef(t *testing.T) {
 	v := []byte("123")
@@ -24,4 +28,7 @@ func TestRef(t *testing.T) {
 	case "[]uint8":
 
 	}
+}
+func TestName(t *testing.T) {
+	t.Log(time.Now().Format("2006-01-02T15:04:05.999999999Z"))
 }
