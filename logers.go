@@ -43,6 +43,7 @@ type loges struct {
 	urlErrTime chan int
 }
 
+// 在这里配置 密码 和 url
 var (
 	BasicAuth = ""
 	EsUrl     = ""
@@ -140,7 +141,6 @@ var defaultLoges *loges
 func init() {
 	byt := base64.StdEncoding.EncodeToString([]byte(BasicAuth))
 	BasicAuth = "Basic " + byt
-
 	defaultLoges = &loges{}
 	defaultLoges.hub("./info.log")
 }
