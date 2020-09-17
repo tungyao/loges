@@ -1,7 +1,6 @@
 package loges
 
 import (
-	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -10,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -49,14 +49,15 @@ var (
 	EsUrl     = ""
 )
 
-func convert(v []interface{}) []byte {
+func convert(v []interface{}) string {
 	str := fmt.Sprintf(`{"status":"%s","datetime":"%s","pc":"%d","file":"%s","line":"%d","func":"%s","msg":"`, v[:6]...)
+	// s := ""
 	for _, value := range v[6].([]interface{}) {
 		str += fmt.Sprint(value) + ","
 	}
 	str = str[:len(str)-1]
-	str += `"}`
-	return []byte(str)
+	str = strings.Replace(str, string(uint8(9)), "", -1)
+	return str + `"}`
 }
 func (l *loges) trace(v ...interface{}) {
 	go l.request(convert(v))
@@ -81,10 +82,10 @@ func (l *loges) fatal(v ...interface{}) {
 	byt := []byte(fmt.Sprintln(v))
 	l.send <- byt[1 : len(byt)-2]
 }
-func (l *loges) request(byt []byte) {
+func (l *loges) request(byt string) {
 	if !l.urlErr {
 		c := http.Client{}
-		req, err := http.NewRequest("POST", EsUrl, bytes.NewReader(byt))
+		req, err := http.NewRequest("POST", EsUrl, strings.NewReader(byt))
 		if err != nil {
 			l.urlErr = true
 			l.urlErrTime <- 1
