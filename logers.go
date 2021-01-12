@@ -50,12 +50,14 @@ var (
 )
 
 // 增加初始化方法
-func Init(esUrl, basicAuth, logPath string) *loges {
+func Init(esUrl, basicAuth, logPath string, isEs bool) *loges {
 	BasicAuth = basicAuth
 	EsUrl = esUrl
 	byt := base64.StdEncoding.EncodeToString([]byte(BasicAuth))
 	BasicAuth = "Basic " + byt
-	defaultLoges = &loges{}
+	defaultLoges = &loges{
+		isEs: isEs,
+	}
 	defaultLoges.hub(logPath)
 	return defaultLoges
 }
@@ -71,25 +73,33 @@ func convert(v []interface{}) string {
 	return str + `"}`
 }
 func (l *loges) trace(v ...interface{}) {
-	go l.request(convert(v))
+	if l.isEs {
+		go l.request(convert(v))
+	}
 	byt := []byte(fmt.Sprintln(v))
 	l.send <- byt[1 : len(byt)-2]
 }
 
 func (l *loges) warn(v ...interface{}) {
-	go l.request(convert(v))
+	if l.isEs {
+		go l.request(convert(v))
+	}
 	byt := []byte(fmt.Sprintln(v))
 	l.send <- byt[1 : len(byt)-2]
 }
 
 func (l *loges) error(v ...interface{}) {
-	go l.request(convert(v))
+	if l.isEs {
+		go l.request(convert(v))
+	}
 	byt := []byte(fmt.Sprintln(v))
 	l.send <- byt[1 : len(byt)-2]
 }
 
 func (l *loges) fatal(v ...interface{}) {
-	go l.request(convert(v))
+	if l.isEs {
+		go l.request(convert(v))
+	}
 	byt := []byte(fmt.Sprintln(v))
 	l.send <- byt[1 : len(byt)-2]
 }
