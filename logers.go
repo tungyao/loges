@@ -94,6 +94,7 @@ func (l *loges) error(v ...interface{}) {
 	}
 	byt := []byte(fmt.Sprintln(v))
 	l.send <- byt[1 : len(byt)-2]
+	panic(v)
 }
 
 func (l *loges) fatal(v ...interface{}) {
@@ -102,6 +103,7 @@ func (l *loges) fatal(v ...interface{}) {
 	}
 	byt := []byte(fmt.Sprintln(v))
 	l.send <- byt[1 : len(byt)-2]
+	panic(v)
 }
 func (l *loges) request(byt string) {
 	if !l.urlErr {
