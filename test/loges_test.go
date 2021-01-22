@@ -9,8 +9,8 @@ import (
 func init() {
 	loges.Init("", "", "./loges.log", false, &loges.Config{
 		RabbitMq: loges.Rabbit{
-			Host:  "amqp://tungyao:JLASlj12jlias@106.52.170.25:5672/admin",
-			Queue: "loges_test",
+			Host:  "",
+			Queue: "",
 		},
 	})
 }
