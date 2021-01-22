@@ -3,6 +3,7 @@ package loges
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/streadway/amqp"
 	"io"
 	"io/ioutil"
 	"log"
@@ -41,6 +42,14 @@ type loges struct {
 	send       chan []byte
 	urlErr     bool
 	urlErrTime chan int
+	config     *Config
+}
+type Config struct {
+	RabbitMq Rabbit
+}
+type Rabbit struct {
+	Host  string
+	Queue string
 }
 
 // 在这里配置 密码 和 url
@@ -50,13 +59,14 @@ var (
 )
 
 // 增加初始化方法
-func Init(esUrl, basicAuth, logPath string, isEs bool) *loges {
+func Init(esUrl, basicAuth, logPath string, isEs bool, config *Config) *loges {
 	BasicAuth = basicAuth
 	EsUrl = esUrl
 	byt := base64.StdEncoding.EncodeToString([]byte(BasicAuth))
 	BasicAuth = "Basic " + byt
 	defaultLoges = &loges{
-		isEs: isEs,
+		isEs:   isEs,
+		config: config,
 	}
 	defaultLoges.hub(logPath)
 	return defaultLoges
@@ -141,12 +151,35 @@ func (l *loges) hub(filePath string) {
 		log.Fatalln(err)
 	}
 	l.writers = append(l.writers, fs)
+	if l.config != nil {
+		// 与rabbitmq建立连接
+		conn, err := amqp.Dial(l.config.RabbitMq.Host)
+		if err != nil {
+			log.Fatal("connect amqp failed")
+		}
+		ch, err := conn.Channel()
+		if err != nil {
+			log.Fatal("connect channel failed")
+		}
+		q, err := ch.QueueDeclare(
+			l.config.RabbitMq.Queue, // name
+			false,                   // durable
+			false,                   // delete when unused
+			false,                   // exclusive
+			false,                   // no-wait
+			nil,                     // arguments
+		)
+		outer := &MqOuter{
+			Queue: q,
+			Amqp:  ch,
+		}
+		l.writers = append(l.writers, outer)
+	}
 	go func() {
 		for {
 			byt := <-l.send
-			byt = append(byt, '\n')
+			//byt = append(byt, '\n')
 			for _, v := range l.writers {
-				fmt.Println(string(byt))
 				go v.Write(byt)
 			}
 		}
@@ -184,4 +217,23 @@ func Fatal(v ...interface{}) {
 	defaultLoges.fatal("fatal", time.Now().Format("2006-01-02T15:04:05.999999999Z"), pc, file, line, f.Name(), v)
 }
 
-// 增加通过udp连接
+// mqOuter
+type MqOuter struct {
+	io.ByteWriter
+	Amqp  *amqp.Channel
+	Queue amqp.Queue
+}
+
+func (m *MqOuter) Write(p []byte) (n int, err error) {
+	err = m.Amqp.Publish(
+		"",
+		m.Queue.Name,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        p,
+		},
+	)
+	return len(p), err
+}
