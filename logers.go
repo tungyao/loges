@@ -15,8 +15,6 @@ import (
 	"time"
 )
 
-// 日志 输出至 ES , FILE
-
 // 日志调用API
 type logger interface {
 	trace(v ...interface{})
@@ -25,12 +23,11 @@ type logger interface {
 	fatal(v ...interface{})
 }
 
-// 日志记录器
-// isEs 是否开启es
-// file 文件句柄
-// fileName 日志文件位置
-// size 日志文件大小
-// writers 向外写出器
+// isEs enable es
+// file file
+// fileName log file storage path
+// size file size
+// writers io.writer
 type loges struct {
 	logger
 	sync.Mutex
@@ -44,8 +41,10 @@ type loges struct {
 	urlErrTime chan int
 	config     *Config
 }
+
 type Config struct {
 	RabbitMq Rabbit
+	DevMode  bool // is dev mode,not print log
 }
 type Rabbit struct {
 	Host  string
@@ -142,7 +141,7 @@ func (l *loges) request(byt string) {
 }
 func (l *loges) hub(filePath string) {
 
-	// 建立缓冲通道
+	// build channel
 	l.send = make(chan []byte, 2048)
 	l.writers = make([]io.Writer, 0)
 	l.urlErrTime = make(chan int)
@@ -152,7 +151,7 @@ func (l *loges) hub(filePath string) {
 	}
 	l.writers = append(l.writers, fs)
 	if l.config != nil {
-		// 与rabbitmq建立连接
+		// rabbitmq connect
 		conn, err := amqp.Dial(l.config.RabbitMq.Host)
 		if err != nil {
 			log.Fatal("connect amqp failed")
@@ -179,7 +178,12 @@ func (l *loges) hub(filePath string) {
 		for {
 			byt := <-l.send
 			//byt = append(byt, '\n')
-			for _, v := range l.writers {
+
+			// start dev mode
+			for i, v := range l.writers {
+				if i != 0 {
+					continue
+				}
 				go v.Write(byt)
 			}
 		}
