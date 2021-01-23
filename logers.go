@@ -3,7 +3,6 @@ package loges
 import (
 	"encoding/base64"
 	"fmt"
-	"github.com/streadway/amqp"
 	"io"
 	"io/ioutil"
 	"log"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/streadway/amqp"
 )
 
 // 日志调用API
@@ -177,11 +178,9 @@ func (l *loges) hub(filePath string) {
 	go func() {
 		for {
 			byt := <-l.send
-			//byt = append(byt, '\n')
-
 			// start dev mode
 			for i, v := range l.writers {
-				if i != 0 {
+				if l.config.DevMode && i != 0 {
 					continue
 				}
 				go v.Write(byt)
