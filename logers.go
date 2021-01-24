@@ -1,9 +1,9 @@
 package loges
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -32,40 +32,33 @@ type logger interface {
 type loges struct {
 	logger
 	sync.Mutex
-	isEs       bool
 	file       *os.File
 	fileName   string
 	size       int64
-	writers    []io.Writer
-	send       chan []byte
+	writers    []LogesWriter
+	send       chan []interface{}
 	urlErr     bool
 	urlErrTime chan int
 	config     *Config
 }
 
 type Config struct {
-	RabbitMq Rabbit
+	EsConfig *Es
+	RabbitMq *Rabbit
 	DevMode  bool // is dev mode,not print log
 }
 type Rabbit struct {
 	Host  string
 	Queue string
 }
-
-// 在这里配置 密码 和 url
-var (
-	BasicAuth = ""
-	EsUrl     = ""
-)
+type Es struct {
+	Host      string
+	BasicAuth string
+}
 
 // 增加初始化方法
-func Init(esUrl, basicAuth, logPath string, isEs bool, config *Config) *loges {
-	BasicAuth = basicAuth
-	EsUrl = esUrl
-	byt := base64.StdEncoding.EncodeToString([]byte(BasicAuth))
-	BasicAuth = "Basic " + byt
+func Init(logPath string, config *Config) *loges {
 	defaultLoges = &loges{
-		isEs:   isEs,
 		config: config,
 	}
 	defaultLoges.hub(logPath)
@@ -83,75 +76,78 @@ func convert(v []interface{}) string {
 	return str + `"}`
 }
 func (l *loges) trace(v ...interface{}) {
-	if l.isEs {
-		go l.request(convert(v))
-	}
-	byt := []byte(fmt.Sprintln(v))
-	l.send <- byt[1 : len(byt)-2]
+	l.send <- v
 }
 
 func (l *loges) warn(v ...interface{}) {
-	if l.isEs {
-		go l.request(convert(v))
-	}
-	byt := []byte(fmt.Sprintln(v))
-	l.send <- byt[1 : len(byt)-2]
+	l.send <- v
 }
 
 func (l *loges) error(v ...interface{}) {
-	if l.isEs {
-		go l.request(convert(v))
-	}
-	byt := []byte(fmt.Sprintln(v))
-	l.send <- byt[1 : len(byt)-2]
+	l.send <- v
 	panic(v)
 }
 
 func (l *loges) fatal(v ...interface{}) {
-	if l.isEs {
-		go l.request(convert(v))
-	}
-	byt := []byte(fmt.Sprintln(v))
-	l.send <- byt[1 : len(byt)-2]
+	l.send <- v
 	panic(v)
 }
-func (l *loges) request(byt string) {
-	if !l.urlErr {
+func (es *EsOuter) request(byt []byte) {
+	if !es.urlErr {
 		c := http.Client{}
-		req, err := http.NewRequest("POST", EsUrl, strings.NewReader(byt))
+		req, err := http.NewRequest("POST", es.Host, bytes.NewReader(byt))
 		if err != nil {
-			l.urlErr = true
-			l.urlErrTime <- 1
+			es.urlErr = true
+			es.urlErrTime <- 1
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", BasicAuth)
+		req.Header.Set("Authorization", es.BasicAuth)
 		res, err := c.Do(req)
 		if err != nil {
-			l.urlErr = true
-			l.urlErrTime <- 1
+			es.urlErr = true
+			es.urlErrTime <- 1
 			return
 		}
 		d, _ := ioutil.ReadAll(res.Body)
 		if res.StatusCode != 200 && res.StatusCode != 201 {
-			l.urlErr = true
-			l.urlErrTime <- 1
+			es.urlErr = true
+			es.urlErrTime <- 1
 			Warn(string(d))
 		}
 	}
 }
+
+var defaultLoges *loges
+
 func (l *loges) hub(filePath string) {
 
 	// build channel
-	l.send = make(chan []byte, 2048)
-	l.writers = make([]io.Writer, 0)
+	l.send = make(chan []interface{}, 2048)
+	l.writers = make([]LogesWriter, 0)
 	l.urlErrTime = make(chan int)
 	fs, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 766)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	l.writers = append(l.writers, fs)
-	if l.config != nil {
+	// append file
+	l.writers = append(l.writers, &FileOuter{
+		fs: fs,
+	})
+	// append es
+	if l.config.EsConfig != nil {
+		l.config.EsConfig.BasicAuth = "Basic " + base64.StdEncoding.EncodeToString([]byte(l.config.EsConfig.BasicAuth))
+		esOuters := &EsOuter{
+			Host:       l.config.EsConfig.Host,
+			BasicAuth:  l.config.EsConfig.BasicAuth,
+			urlErr:     l.urlErr,
+			urlErrTime: l.urlErrTime,
+		}
+		l.writers = append(l.writers, esOuters)
+	}
+
+	// append rabbit
+	if l.config.RabbitMq != nil {
 		// rabbitmq connect
 		conn, err := amqp.Dial(l.config.RabbitMq.Host)
 		if err != nil {
@@ -196,8 +192,6 @@ func (l *loges) hub(filePath string) {
 	}()
 }
 
-var defaultLoges *loges
-
 func Println(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
@@ -218,25 +212,4 @@ func Fatal(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
 	defaultLoges.fatal("fatal", time.Now().Format(time.RFC3339), pc, file, line, f.Name(), v)
-}
-
-// mqOuter
-type MqOuter struct {
-	io.ByteWriter
-	Amqp  *amqp.Channel
-	Queue amqp.Queue
-}
-
-func (m *MqOuter) Write(p []byte) (n int, err error) {
-	err = m.Amqp.Publish(
-		"",
-		m.Queue.Name,
-		false,
-		false,
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        p,
-		},
-	)
-	return len(p), err
 }

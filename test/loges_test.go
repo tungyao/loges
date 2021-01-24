@@ -8,12 +8,8 @@ import (
 )
 
 func init() {
-	loges.Init("", "", "./loges.log", false, &loges.Config{
-		DevMode: false,
-		RabbitMq: loges.Rabbit{
-			Host:  "",
-			Queue: "",
-		},
+	loges.Init("./loges.log", &loges.Config{
+		DevMode: true,
 	})
 }
 func TestLoges(t *testing.T) {
