@@ -201,23 +201,23 @@ var defaultLoges *loges
 func Println(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
-	defaultLoges.trace("info", time.Now().Format("2006-01-02T15:04:05.999999999Z"), pc, file, line, f.Name(), v)
+	defaultLoges.trace("info", time.Now().Format(time.RFC3339), pc, file, line, f.Name(), v)
 }
 
 func Panic(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
-	defaultLoges.error("error", time.Now().Format("2006-01-02T15:04:05.999999999Z"), pc, file, line, f.Name(), v)
+	defaultLoges.error("error", time.Now().Format(time.RFC3339), pc, file, line, f.Name(), v)
 }
 func Warn(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
-	defaultLoges.warn("warn", time.Now().Format("2006-01-02T15:04:05.999999999Z"), pc, file, line, f.Name(), v)
+	defaultLoges.warn("warn", time.Now().Format(time.RFC3339), pc, file, line, f.Name(), v)
 }
 func Fatal(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
-	defaultLoges.fatal("fatal", time.Now().Format("2006-01-02T15:04:05.999999999Z"), pc, file, line, f.Name(), v)
+	defaultLoges.fatal("fatal", time.Now().Format(time.RFC3339), pc, file, line, f.Name(), v)
 }
 
 // mqOuter

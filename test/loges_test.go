@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"testing"
 
-	"../../loges"
+	"github.com/tungyao/loges"
 )
 
 func init() {
 	loges.Init("", "", "./loges.log", false, &loges.Config{
-		DevMode:false,
+		DevMode: false,
 		RabbitMq: loges.Rabbit{
 			Host:  "",
 			Queue: "",
