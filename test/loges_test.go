@@ -9,7 +9,7 @@ import (
 
 func init() {
 	loges.Init("./loges.log", &loges.Config{
-		DevMode: true,
+		DevMode: false,
 	})
 }
 func TestLoges(t *testing.T) {

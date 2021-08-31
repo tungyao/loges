@@ -45,6 +45,7 @@ type loges struct {
 type Config struct {
 	EsConfig *Es
 	RabbitMq *Rabbit
+	File     bool
 	DevMode  bool // is dev mode,not print log
 }
 type Rabbit struct {
@@ -126,14 +127,19 @@ func (l *loges) hub(filePath string) {
 	l.send = make(chan []interface{}, 2048)
 	l.writers = make([]LogesWriter, 0)
 	l.urlErrTime = make(chan int)
-	fs, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 766)
-	if err != nil {
-		log.Fatalln(err)
+
+	// append local file
+	if l.config.File {
+		fs, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 766)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		// append file
+		l.writers = append(l.writers, &FileOuter{
+			fs: fs,
+		})
 	}
-	// append file
-	l.writers = append(l.writers, &FileOuter{
-		fs: fs,
-	})
+
 	// append es
 	if l.config.EsConfig != nil {
 		l.config.EsConfig.BasicAuth = "Basic " + base64.StdEncoding.EncodeToString([]byte(l.config.EsConfig.BasicAuth))
@@ -171,6 +177,7 @@ func (l *loges) hub(filePath string) {
 		}
 		l.writers = append(l.writers, outer)
 	}
+
 	go func() {
 		for {
 			byt := <-l.send
