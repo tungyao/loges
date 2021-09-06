@@ -1,10 +1,9 @@
 package loges
 
 import (
-	"bytes"
-	"fmt"
 	"os"
 
+	json "github.com/json-iterator/go"
 	"github.com/streadway/amqp"
 )
 
@@ -14,32 +13,42 @@ type FileOuter struct {
 	fs *os.File
 }
 
-func (m *FileOuter) Write(p []interface{}) (n int, err error) {
-	b := fmt.Sprint(p)
-	m.fs.Write(bytes.NewBufferString(b[1:len(b)-1] + "\n").Bytes())
+func (m *FileOuter) Write(dataStruct *DataStruct) (n int, err error) {
+	d, err := json.Marshal(dataStruct)
+	m.fs.Write(d)
+	m.fs.Write([]byte("\r\n"))
 	m.fs.Sync()
-	return len(p), err
+	return 0, err
 }
 
 // mqOuter
 type MqOuter struct {
 	LogesWriter
 	Amqp  *amqp.Channel
-	Queue amqp.Queue
+	Queue string
 }
 
-func (m *MqOuter) Write(p []interface{}) (n int, err error) {
+func (m *MqOuter) Write(dataStruct *DataStruct) (n int, err error) {
+	d, err := json.Marshal(dataStruct)
+	q, err := m.Amqp.QueueDeclare(
+		m.Queue, // name
+		false,   // durable
+		false,   // delete when unused
+		false,   // exclusive
+		false,   // no-wait
+		nil,     // arguments
+	)
 	err = m.Amqp.Publish(
 		"",
-		m.Queue.Name,
+		q.Name,
 		false,
 		false,
 		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        []byte(fmt.Sprintln(p)),
+			ContentType: "application/json",
+			Body:        d,
 		},
 	)
-	return len(p), err
+	return 0, err
 }
 
 // es outer
@@ -51,7 +60,8 @@ type EsOuter struct {
 	BasicAuth  string
 }
 
-func (es *EsOuter) Write(p []interface{}) (n int, err error) {
-	es.request([]byte(convert(p)))
-	return len(p), err
+func (es *EsOuter) Write(dataStruct *DataStruct) (n int, err error) {
+	d, err := json.Marshal(dataStruct)
+	es.request(d)
+	return 0, err
 }

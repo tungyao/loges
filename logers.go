@@ -36,7 +36,7 @@ type loges struct {
 	fileName   string
 	size       int64
 	writers    []LogesWriter
-	send       chan []interface{}
+	send       chan *DataStruct
 	urlErr     bool
 	urlErrTime chan int
 	config     *Config
@@ -76,22 +76,22 @@ func convert(v []interface{}) string {
 	str = strings.Replace(str, string(uint8(9)), "", -1)
 	return str + `"}`
 }
-func (l *loges) trace(v ...interface{}) {
-	l.send <- v
+func (l *loges) trace(dataStruct *DataStruct) {
+	l.send <- dataStruct
 }
 
-func (l *loges) warn(v ...interface{}) {
-	l.send <- v
+func (l *loges) warn(dataStruct *DataStruct) {
+	l.send <- dataStruct
 }
 
-func (l *loges) error(v ...interface{}) {
-	l.send <- v
-	panic(v)
+func (l *loges) error(dataStruct *DataStruct) {
+	l.send <- dataStruct
+	panic(dataStruct.Msg)
 }
 
-func (l *loges) fatal(v ...interface{}) {
-	l.send <- v
-	panic(v)
+func (l *loges) fatal(dataStruct *DataStruct) {
+	l.send <- dataStruct
+	panic(dataStruct.Msg)
 }
 func (es *EsOuter) request(byt []byte) {
 	if !es.urlErr {
@@ -111,6 +111,7 @@ func (es *EsOuter) request(byt []byte) {
 			return
 		}
 		d, _ := ioutil.ReadAll(res.Body)
+		fmt.Println(string(d))
 		if res.StatusCode != 200 && res.StatusCode != 201 {
 			es.urlErr = true
 			es.urlErrTime <- 1
@@ -124,7 +125,7 @@ var defaultLoges *loges
 func (l *loges) hub(filePath string) {
 
 	// build channel
-	l.send = make(chan []interface{}, 2048)
+	l.send = make(chan *DataStruct, 2048)
 	l.writers = make([]LogesWriter, 0)
 	l.urlErrTime = make(chan int)
 
@@ -151,28 +152,20 @@ func (l *loges) hub(filePath string) {
 		}
 		l.writers = append(l.writers, esOuters)
 	}
-
 	// append rabbit
 	if l.config.RabbitMq != nil {
 		// rabbitmq connect
 		conn, err := amqp.Dial(l.config.RabbitMq.Host)
 		if err != nil {
-			log.Fatal("connect amqp failed")
+			fmt.Println("connect amqp failed")
 		}
 		ch, err := conn.Channel()
 		if err != nil {
-			log.Fatal("connect channel failed")
+			fmt.Println("connect channel failed")
 		}
-		q, err := ch.QueueDeclare(
-			l.config.RabbitMq.Queue, // name
-			false,                   // durable
-			false,                   // delete when unused
-			false,                   // exclusive
-			false,                   // no-wait
-			nil,                     // arguments
-		)
+
 		outer := &MqOuter{
-			Queue: q,
+			Queue: l.config.RabbitMq.Queue,
 			Amqp:  ch,
 		}
 		l.writers = append(l.writers, outer)
@@ -202,21 +195,53 @@ func (l *loges) hub(filePath string) {
 func Println(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
-	defaultLoges.trace("info", time.Now().Format(time.RFC3339), pc, file, line, f.Name(), v)
+	defaultLoges.trace(&DataStruct{
+		Status:   "info",
+		DateTime: time.Now().Format(time.RFC3339),
+		Pc:       int64(pc),
+		File:     file,
+		Line:     line,
+		Func:     f.Name(),
+		Msg:      fmt.Sprint(v),
+	})
 }
 
 func Panic(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
-	defaultLoges.error("error", time.Now().Format(time.RFC3339), pc, file, line, f.Name(), v)
+	defaultLoges.error(&DataStruct{
+		Status:   "error",
+		DateTime: time.Now().Format(time.RFC3339),
+		Pc:       int64(pc),
+		File:     file,
+		Line:     line,
+		Func:     f.Name(),
+		Msg:      fmt.Sprint(v),
+	})
 }
 func Warn(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
-	defaultLoges.warn("warn", time.Now().Format(time.RFC3339), pc, file, line, f.Name(), v)
+	defaultLoges.warn(&DataStruct{
+		Status:   "warn",
+		DateTime: time.Now().Format(time.RFC3339),
+		Pc:       int64(pc),
+		File:     file,
+		Line:     line,
+		Func:     f.Name(),
+		Msg:      fmt.Sprint(v),
+	})
 }
 func Fatal(v ...interface{}) {
 	pc, file, line, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
-	defaultLoges.fatal("fatal", time.Now().Format(time.RFC3339), pc, file, line, f.Name(), v)
+	defaultLoges.fatal(&DataStruct{
+		Status:   "fatal",
+		DateTime: time.Now().Format(time.RFC3339),
+		Pc:       int64(pc),
+		File:     file,
+		Line:     line,
+		Func:     f.Name(),
+		Msg:      fmt.Sprint(v),
+	})
 }
